@@ -346,9 +346,17 @@ def chat_reply(conn, message, history, client=None):
     if _is_guardrail_violation(message):
         return GUARDRAIL_REFUSAL, None, None, _usage_dict()
 
+    # RAG: resolver sinônimos de KPIs na mensagem do usuário
+    rag_hint = ""
+    if not any(kw in message.lower() for kw in ["o que é", "o que e", "explique", "defina"]):
+        resolved = kpi_rag.resolve_kpi(message)
+        if resolved["kpi_name"] and resolved["confidence"] > 0.6:
+            rag_hint = f"\n[RAG: '{message}' → {resolved['kpi_name']} (conf:{resolved['confidence']}) — use este KPI]"
+    message_with_rag = message + rag_hint
+
     clean_history = [{"role": h["role"], "content": h["content"]} for h in history]
     messages = [{"role": "system", "content": build_system_prompt()}] + clean_history + \
-        [{"role": "user", "content": message}]
+        [{"role": "user", "content": message_with_rag}]
 
     try:
         response = _call_llm(messages, tools=TOOL_SCHEMA)
