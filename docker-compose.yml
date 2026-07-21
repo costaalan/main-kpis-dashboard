@@ -1,0 +1,14 @@
+services:
+  main-kpis-dashboard:
+    build: .
+    container_name: main-kpis-dashboard
+    ports:
+      - "${PORT:-8702}:8702"
+    environment:
+      - MAIN_KPIS_DB=/app/data/kpi_cache.db
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - /root/.hermes/main-kpis-monitor:/app/monitor
+    restart: unless-stopped

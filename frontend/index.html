@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Main KPIs Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+.modal-overlay { background: rgba(0,0,0,0.5); }
+.kpi-table tr:nth-child(even) { background-color: #f3f4f6; }
+.kpi-table td:nth-child(even), .kpi-table th:nth-child(even) { background-color: rgba(0,0,0,0.04); }
+#agents-arena { position: relative; width: 560px; height: 560px; max-width: 100%; margin: 0 auto; }
+.robot-node { position: absolute; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.pulse-eye { animation: eye-pulse 1.4s ease-in-out infinite; }
+@keyframes eye-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.speech-bubble {
+  position: absolute; max-width: 130px; background: white; border: 2px solid;
+  border-radius: 10px; padding: 6px 8px; font-size: 10px; line-height: 1.3;
+  text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+.speech-bubble::after { content: ""; position: absolute; width: 0; height: 0; border: 8px solid transparent; }
+.speech-bubble.tail-down::after { top: 100%; left: 50%; transform: translateX(-50%); border-top-color: inherit; }
+.speech-bubble.tail-up::after { bottom: 100%; left: 50%; transform: translateX(-50%); border-bottom-color: inherit; }
+.speech-bubble.tail-left::after { top: 50%; right: 100%; transform: translateY(-50%); border-right-color: inherit; }
+.speech-bubble.tail-right::after { top: 50%; left: 100%; transform: translateY(-50%); border-left-color: inherit; }
+</style>
+</head>
+<body class="bg-gray-100 min-h-screen p-4">
+
+<div id="stale-banner" class="hidden bg-yellow-200 text-yellow-900 text-sm p-2 rounded mb-3" data-i18n="stale_banner"></div>
+
+<div class="flex items-center justify-between mb-2">
+  <h1 class="text-xl font-bold" data-i18n="title">Main KPIs Dashboard</h1>
+  <div class="flex gap-2">
+    <button id="lang-pt" title="Portugues"><img src="https://flagcdn.com/24x18/br.png" width="24" height="18" class="rounded-sm" alt="BR"></button>
+    <button id="lang-es" title="Espanol"><img src="https://flagcdn.com/24x18/es.png" width="24" height="18" class="rounded-sm" alt="ES"></button>
+  </div>
+</div>
+
+<div class="flex gap-2 mb-4">
+  <button id="tab-dashboard" class="px-3 py-1 rounded bg-blue-600 text-white" data-i18n="tab_dashboard">Dashboard</button>
+  <button id="tab-assistant" class="px-3 py-1 rounded bg-gray-200" data-i18n="tab_assistant">Assistente</button>
+  <button id="tab-agents" class="px-3 py-1 rounded bg-gray-200" data-i18n="tab_agents">Agentes</button>
+</div>
+
+<div id="view-dashboard">
+<div class="flex flex-wrap gap-3 mb-4 bg-white p-3 rounded shadow">
+  <div>
+    <label class="text-xs block" data-i18n="filter_kpi">KPI NAME</label>
+    <select id="f-kpi" class="border rounded p-1"><option value="">--</option></select>
+  </div>
+  <div>
+    <label class="text-xs block" data-i18n="filter_periodicidade">PERIODICIDADE</label>
+    <select id="f-periodicidade" class="border rounded p-1">
+      <option value="dia" data-i18n="periodicidade_dia">Dia</option>
+      <option value="semana" data-i18n="periodicidade_semana">Semana</option>
+      <option value="mes" data-i18n="periodicidade_mes">Mes</option>
+    </select>
+  </div>
+  <div>
+    <label class="text-xs block" data-i18n="filter_ano">ANO</label>
+    <select id="f-ano" class="border rounded p-1"></select>
+  </div>
+  <div>
+    <label class="text-xs block" data-i18n="filter_num_periodos">PERIODOS</label>
+    <select id="f-num-periodos" class="border rounded p-1"></select>
+  </div>
+  <div>
+    <label class="text-xs block" data-i18n="filter_site">SITE ID</label>
+    <select id="f-site" class="border rounded p-1">
+      <option value="">--</option>
+      <option value="MLB">Brasil (MLB)</option>
+      <option value="MLM">Mexico (MLM)</option>
+      <option value="MCO">Colombia (MCO)</option>
+      <option value="MLA">Argentina (MLA)</option>
+      <option value="MLC">Chile (MLC)</option>
+      <option value="MLU">Uruguai (MLU)</option>
+    </select>
+  </div>
+  <div class="flex items-end">
+    <button id="btn-ver-grafico" class="hidden px-3 py-1 rounded bg-blue-600 text-white text-sm" data-i18n="ver_grafico">Ver Grafico</button>
+  </div>
+</div>
+
+<div class="overflow-x-auto pb-2">
+  <div id="panels" class="grid grid-cols-6 gap-2 items-start"></div>
+</div>
+
+<div id="expand-modal" class="hidden fixed inset-0 modal-overlay flex items-center justify-center z-40">
+  <div class="bg-white rounded shadow-lg p-4 max-w-4xl w-full max-h-[80vh] overflow-auto">
+    <div class="flex justify-between mb-2">
+      <h2 id="expand-title" class="font-bold"></h2>
+      <button id="expand-close" class="text-xl">&times;</button>
+    </div>
+    <div id="expand-body"></div>
+  </div>
+</div>
+
+<div id="chart-modal" class="hidden fixed inset-0 modal-overlay flex items-center justify-center z-50">
+  <div class="bg-white rounded shadow-lg p-4 max-w-2xl w-full">
+    <div class="flex justify-between mb-2">
+      <h2 id="chart-title" class="font-bold"></h2>
+      <button id="chart-close" class="text-xl">&times;</button>
+    </div>
+    <div class="flex gap-4">
+      <div class="flex-1 h-72 relative">
+        <canvas id="chart-canvas"></canvas>
+      </div>
+      <div class="w-24 flex flex-col items-center justify-center">
+        <div id="chart-trend-badge" class="text-3xl"></div>
+        <div id="chart-trend-label" class="text-xs mt-1"></div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div id="view-assistant" class="hidden bg-white rounded shadow p-3 w-full flex flex-col h-[calc(100vh-140px)]">
+  <div id="chat-messages" class="flex-1 overflow-y-auto flex flex-col gap-2 mb-3 text-sm"></div>
+  <div class="flex gap-2">
+    <input id="chat-input" type="text" class="border rounded p-2 flex-1"
+           data-i18n-placeholder="chat_placeholder" placeholder="Pergunte sobre os KPIs...">
+    <button id="chat-send" class="bg-blue-600 text-white px-4 rounded" data-i18n="chat_send">Enviar</button>
+  </div>
+</div>
+
+<div id="view-agents" class="hidden bg-white rounded shadow p-4">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="font-semibold" data-i18n="agents_title">Monitoramento dos Agentes</h2>
+    <span id="agents-last-checked" class="text-xs text-gray-500"></span>
+  </div>
+  <div id="agents-arena"></div>
+  <h3 class="font-semibold mt-6 mb-2 text-sm" data-i18n="agents_log_title">Historico de hoje</h3>
+  <div id="agents-log" class="flex flex-col gap-2 text-sm"></div>
+</div>
+
+<div id="agent-modal" class="hidden fixed inset-0 modal-overlay flex items-center justify-center z-40">
+  <div class="bg-white rounded shadow-lg p-4 max-w-md w-full">
+    <div class="flex justify-between mb-2">
+      <h2 id="agent-modal-title" class="font-bold"></h2>
+      <button id="agent-modal-close" class="text-xl">&times;</button>
+    </div>
+    <p id="agent-modal-desc" class="text-sm text-gray-700 mb-3"></p>
+    <div class="text-xs text-gray-500 mb-1" data-i18n="agents_modal_status">Status atual:</div>
+    <div id="agent-modal-status" class="text-sm font-medium mb-2"></div>
+    <div id="agent-modal-message" class="text-sm text-gray-700 mb-2"></div>
+    <div id="agent-modal-time" class="text-xs text-gray-500"></div>
+  </div>
+</div>
+
+<script>
+const I18N = {
+  pt: {
+    title: "Main KPIs Dashboard", filter_kpi: "KPI NAME", filter_periodicidade: "PERIODICIDADE",
+    filter_ano: "ANO", filter_site: "SITE ID", filter_num_periodos: "PERIODOS",
+    periodicidade_dia: "Dia", periodicidade_semana: "Semana",
+    periodicidade_mes: "Mes", expandir: "Expandir", stale_banner: "Dados desatualizados.",
+    trend_alta: "alta", trend_estavel: "estavel", trend_baixa: "baixa",
+    tab_dashboard: "Dashboard", tab_assistant: "Assistente", ver_grafico: "Ver Grafico",
+    chat_placeholder: "Pergunte sobre os KPIs...", chat_send: "Enviar",
+    tab_agents: "Agentes", agents_title: "Monitoramento dos Agentes",
+    agents_never_run: "Ainda nao rodou", agents_databricks: "Databricks",
+    agents_dashboard: "Dashboard", agents_chat: "Chat", agents_chat_accuracy: "Precisao do Chat",
+    agents_supervisor: "Supervisor", agents_modal_status: "Status atual:",
+    agents_log_title: "Historico de hoje", agents_log_empty: "Nenhuma rodada ainda hoje.",
+  },
+  es: {
+    title: "Main KPIs Dashboard", filter_kpi: "NOMBRE KPI", filter_periodicidade: "PERIODICIDAD",
+    filter_ano: "ANO", filter_site: "SITE ID", periodicidade_dia: "Dia", periodicidade_semana: "Semana",
+    periodicidade_mes: "Mes", expandir: "Expandir", stale_banner: "Datos desactualizados.",
+    trend_alta: "alta", trend_estavel: "estable", trend_baixa: "baja",
+    tab_dashboard: "Dashboard", tab_assistant: "Asistente", ver_grafico: "Ver Grafico",
+    chat_placeholder: "Pregunta sobre los KPIs...", chat_send: "Enviar",
+    tab_agents: "Agentes", agents_title: "Monitoreo de los Agentes",
+    agents_never_run: "Aun no se ejecuto", agents_databricks: "Databricks",
+    agents_dashboard: "Dashboard", agents_chat: "Chat", agents_chat_accuracy: "Precision del Chat",
+    agents_supervisor: "Supervisor", agents_modal_status: "Estado actual:",
+    agents_log_title: "Historial de hoy", agents_log_empty: "Ninguna corrida hoy todavia.",
+  },
+};
+
+let lang = localStorage.getItem("main-kpis-lang") || "pt";
+
+function applyI18n() {
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    const key = el.getAttribute("data-i18n");
+    if (I18N[lang][key]) el.textContent = I18N[lang][key];
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach(el => {
+    const key = el.getAttribute("data-i18n-placeholder");
+    if (I18N[lang][key]) el.placeholder = I18N[lang][key];
+  });
+}
+
+function setLang(l) {
+  lang = l;
+  localStorage.setItem("main-kpis-lang", l);
+  applyI18n();
+  loadPanels();
+}
+
+document.getElementById("lang-pt").addEventListener("click", () => setLang("pt"));
+document.getElementById("lang-es").addEventListener("click", () => setLang("es"));
+
+const KPI_NAMES = ["GMV","AOV","CVR","ROAS","OTD","TEMPO_DESPACHO","TAXA_RECLAMACAO","TAXA_CANCELAMENTO","CAC","LTV"];
+// Must match backend/main.py's PERCENT_KPIS — KPIs that are themselves a rate,
+// shown with % and whose delta is pp (absolute points), not relative %.
+const PERCENT_KPIS = new Set(["CVR", "OTD", "TAXA_RECLAMACAO", "TAXA_CANCELAMENTO"]);
+
+const SITE_ISO = { MLB: "br", MLM: "mx", MCO: "co", MLA: "ar", MLC: "cl", MLU: "uy" };
+const SITE_NAMES = { MLB: "Brasil", MLM: "Mexico", MCO: "Colombia", MLA: "Argentina", MLC: "Chile", MLU: "Uruguai" };
+const SITE_COLORS = { MLB: "#16a34a", MLM: "#dc2626", MCO: "#eab308", MLA: "#2563eb", MLC: "#ef4444", MLU: "#0ea5e9" };
+
+function flagImgHtml(siteId) {
+  const iso = SITE_ISO[siteId];
+  if (!iso) return "";
+  return `<img src="https://flagcdn.com/24x18/${iso}.png" width="24" height="18" class="inline-block align-middle mr-1 rounded-sm" alt="${siteId}">`;
+}
+
+const kpiSelect = document.getElementById("f-kpi");
+KPI_NAMES.forEach(k => {
+  const opt = document.createElement("option");
+  opt.value = k; opt.textContent = k;
+  kpiSelect.appendChild(opt);
+});
+
+const MAX_PERIODOS = { dia: 15, semana: 10, mes: 12 };
+
+function currentFilters() {
+  return {
+    kpi_name: document.getElementById("f-kpi").value || null,
+    periodicidade: document.getElementById("f-periodicidade").value,
+    ano: document.getElementById("f-ano").value || null,
+    site_id: document.getElementById("f-site").value || null,
+    num_periodos: parseInt(document.getElementById("f-num-periodos").value) || 3,
+  };
+}
+
+function populateNumPeriodosOptions(periodicidade) {
+  const sel = document.getElementById("f-num-periodos");
+  const max = MAX_PERIODOS[periodicidade] || 15;
+  const prev = parseInt(sel.value) || 3;
+  sel.innerHTML = "";
+  for (let i = 1; i <= max; i++) {
+    const opt = document.createElement("option");
+    opt.value = i; opt.textContent = i;
+    sel.appendChild(opt);
+  }
+  sel.value = Math.min(prev, max);
+}
+
+async function populateAnoOptions(periodicidade) {
+  const sel = document.getElementById("f-ano");
+  const prev = sel.value;
+  const resp = await fetch("/api/kpis/anos?periodicidade=" + periodicidade);
+  const body = resp.status === 200 ? await resp.json() : { anos: [] };
+  sel.innerHTML = `<option value="">--</option>` + body.anos.map(a => `<option value="${a}">${a}</option>`).join("");
+  sel.value = body.anos.map(String).includes(prev) ? prev : "";
+}
+
+function fmtValor(v, kpiName) {
+  if (typeof v !== "number") return "-";
+  if (PERCENT_KPIS.has(kpiName)) return (v * 100).toFixed(1) + "%";
+  return v.toLocaleString(lang === "pt" ? "pt-BR" : "es-ES", {maximumFractionDigits: 2});
+}
+
+function fmtDelta(v, kpiName) {
+  // Fixed-width arrow column (grid-cols) so arrows line up vertically across rows
+  // regardless of how many digits the number next to them has.
+  const wrap = (arrow, text, colorClass) =>
+    `<span class="grid grid-cols-[14px_1fr] gap-1 items-center w-full">` +
+    `<span class="text-center ${colorClass}">${arrow}</span><span class="text-right">${text}</span></span>`;
+  if (v === null || v === undefined) return wrap("", "-", "");
+  const unit = PERCENT_KPIS.has(kpiName) ? "pp" : "%";
+  const sign = v >= 0 ? "+" : "";
+  const text = `${sign}${(v * 100).toFixed(1)}${unit}`;
+  if (v > 0) return wrap("▲", text, "text-green-600");
+  if (v < 0) return wrap("▼", text, "text-red-600");
+  return wrap("", text, "");
+}
+
+async function loadPanels() {
+  const f = currentFilters();
+  const params = new URLSearchParams();
+  if (f.kpi_name) params.set("kpi_name", f.kpi_name);
+  params.set("periodicidade", f.periodicidade);
+  if (f.ano) params.set("ano", f.ano);
+  if (f.site_id) params.set("site_id", f.site_id);
+  params.set("num_periodos", f.num_periodos);
+
+  const resp = await fetch("/api/kpis?" + params.toString());
+  const banner = document.getElementById("stale-banner");
+  if (resp.status !== 200) {
+    banner.classList.remove("hidden");
+    document.getElementById("panels").innerHTML = "";
+    return;
+  }
+  const body = await resp.json();
+  banner.classList.toggle("hidden", !body.stale);
+
+  const container = document.getElementById("panels");
+  container.innerHTML = "";
+  body.panels.forEach(panel => container.appendChild(renderPanel(panel, f.periodicidade, f.kpi_name, f.num_periodos)));
+
+  const verGraficoBtn = document.getElementById("btn-ver-grafico");
+  verGraficoBtn.classList.toggle("hidden", !(f.kpi_name && body.panels.some(p => p.rows.length)));
+  verGraficoBtn.dataset.kpiName = f.kpi_name || "";
+  verGraficoBtn.dataset.siteId = f.site_id || "";
+  verGraficoBtn.dataset.periodicidade = f.periodicidade;
+  verGraficoBtn.dataset.numPeriodos = f.num_periodos;
+}
+
+document.getElementById("btn-ver-grafico").addEventListener("click", (e) => {
+  const { kpiName, siteId, periodicidade, numPeriodos } = e.target.dataset;
+  if (!kpiName) return;
+  if (siteId) {
+    openChartModal(kpiName, siteId, periodicidade, numPeriodos);
+  } else {
+    openChartModalMulti(kpiName, periodicidade, numPeriodos);
+  }
+});
+
+function renderPanel(panel, periodicidade, kpiName, numPeriodos) {
+  const div = document.createElement("div");
+  div.className = "bg-white rounded shadow p-2 min-w-0";
+  const chartBtnHtml = kpiName && panel.rows.length
+    ? `<button class="chart-btn text-sm leading-none" title="Ver grafico">\u{1F4C8}</button>`
+    : "";
+  div.innerHTML = `
+    <div class="flex justify-between items-center mb-2">
+      <span class="font-semibold whitespace-nowrap">${flagImgHtml(panel.site_id)}${panel.site_id}</span>
+      <span class="flex items-center gap-2">
+        ${chartBtnHtml}
+        <button class="text-xs underline expand-btn" data-i18n="expandir">Expandir</button>
+      </span>
+    </div>
+    <div class="overflow-x-auto">${renderTable(panel)}</div>
+  `;
+  div.querySelector(".expand-btn").addEventListener("click", () => openExpandModal(panel));
+  const chartBtn = div.querySelector(".chart-btn");
+  if (chartBtn) {
+    chartBtn.addEventListener("click", () => openChartModal(kpiName, panel.site_id, periodicidade, numPeriodos));
+  }
+  return div;
+}
+
+function renderTable(panel) {
+  let rowsHtml = panel.rows.map(row => {
+    const periodCells = row.periods.map(p => `<td class="px-1 py-0.5 text-right">${fmtValor(p.valor, row.kpi_name)}</td>`).join("");
+    return `<tr>
+      <td class="px-1 py-0.5 font-mono">${row.kpi_name}</td>
+      ${periodCells}
+      <td class="px-1 py-0.5 whitespace-nowrap">${fmtDelta(row.delta_recente.valor, row.kpi_name)}</td>
+      <td class="px-1 py-0.5 whitespace-nowrap">${fmtDelta(row.yoy, row.kpi_name)}</td>
+    </tr>`;
+  }).join("");
+  const periodHeaders = (panel.rows[0]?.periods || []).map(p => `<th class="px-1 py-0.5 whitespace-nowrap">${p.label}</th>`).join("");
+  const deltaLabel = panel.rows[0]?.delta_recente?.label || "";
+  return `<table class="kpi-table text-xs w-full">
+    <thead><tr class="text-left text-gray-500 text-[9px] leading-tight">
+      <th class="px-1 py-0.5 whitespace-nowrap" data-i18n="filter_kpi">KPI NAME</th>
+      ${periodHeaders}
+      <th class="px-1 py-0.5 whitespace-nowrap">${deltaLabel}</th>
+      <th class="px-1 py-0.5 whitespace-nowrap">YoY</th>
+    </tr></thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>`;
+}
+
+function openExpandModal(panel) {
+  document.getElementById("expand-title").textContent = panel.site_id;
+  document.getElementById("expand-body").innerHTML = renderTable(panel);
+  document.getElementById("expand-modal").classList.remove("hidden");
+}
+document.getElementById("expand-close").addEventListener("click", () => {
+  document.getElementById("expand-modal").classList.add("hidden");
+});
+
+let chart = null;
+async function openChartModal(kpiName, siteId, periodicidade, numPeriodos) {
+  const params = new URLSearchParams({ kpi_name: kpiName, site_id: siteId, periodicidade });
+  if (numPeriodos) params.set("num_periodos", numPeriodos);
+  const resp = await fetch(`/api/kpis/series?${params.toString()}`);
+  if (resp.status !== 200) return;
+  const body = await resp.json();
+
+  document.getElementById("chart-title").textContent = `${kpiName} - ${siteId}`;
+  document.getElementById("chart-trend-badge").textContent =
+    body.trend === "alta" ? "UP" : body.trend === "baixa" ? "DOWN" : "=";
+  document.getElementById("chart-trend-label").textContent = I18N[lang]["trend_" + body.trend];
+
+  const ctx = document.getElementById("chart-canvas").getContext("2d");
+  if (chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: body.series.map(p => p.label),
+      datasets: [
+        { label: kpiName, data: body.series.map(p => p.valor), borderColor: "#2563eb", tension: 0.2 },
+        { label: "tendencia", data: body.trend_line, borderColor: "#9ca3af", borderDash: [5, 5], pointRadius: 0 },
+      ],
+    },
+    options: { responsive: true, maintainAspectRatio: false },
+  });
+
+  document.getElementById("chart-modal").classList.remove("hidden");
+}
+document.getElementById("chart-close").addEventListener("click", () => {
+  document.getElementById("chart-modal").classList.add("hidden");
+});
+
+async function openChartModalMulti(kpiName, periodicidade, numPeriodos) {
+  const params = new URLSearchParams({ kpi_name: kpiName, periodicidade });
+  if (numPeriodos) params.set("num_periodos", numPeriodos);
+  const resp = await fetch(`/api/kpis/series-multi?${params.toString()}`);
+  if (resp.status !== 200) return;
+  const body = await resp.json();
+
+  document.getElementById("chart-title").textContent = kpiName;
+  document.getElementById("chart-trend-badge").textContent = "";
+  document.getElementById("chart-trend-label").textContent = "";
+
+  const labels = body.by_site[0]?.series.map(p => p.label) || [];
+  const ctx = document.getElementById("chart-canvas").getContext("2d");
+  if (chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: body.by_site.map(s => ({
+        label: `${SITE_NAMES[s.site_id] || s.site_id} (${s.site_id})`,
+        data: s.series.map(p => p.valor),
+        borderColor: SITE_COLORS[s.site_id] || "#6b7280",
+        tension: 0.2,
+      })),
+    },
+    options: { responsive: true, maintainAspectRatio: false },
+  });
+
+  document.getElementById("chart-modal").classList.remove("hidden");
+}
+
+["f-kpi", "f-ano", "f-site", "f-num-periodos"].forEach(id => {
+  document.getElementById(id).addEventListener("change", loadPanels);
+});
+document.getElementById("f-periodicidade").addEventListener("change", async () => {
+  const periodicidade = document.getElementById("f-periodicidade").value;
+  populateNumPeriodosOptions(periodicidade);
+  await populateAnoOptions(periodicidade);
+  loadPanels();
+});
+
+function setTab(tab) {
+  document.getElementById("view-dashboard").classList.toggle("hidden", tab !== "dashboard");
+  document.getElementById("view-assistant").classList.toggle("hidden", tab !== "assistant");
+  document.getElementById("view-agents").classList.toggle("hidden", tab !== "agents");
+  const dashBtn = document.getElementById("tab-dashboard");
+  const assistBtn = document.getElementById("tab-assistant");
+  const agentsBtn = document.getElementById("tab-agents");
+  dashBtn.className = "px-3 py-1 rounded " + (tab === "dashboard" ? "bg-blue-600 text-white" : "bg-gray-200");
+  assistBtn.className = "px-3 py-1 rounded " + (tab === "assistant" ? "bg-blue-600 text-white" : "bg-gray-200");
+  agentsBtn.className = "px-3 py-1 rounded " + (tab === "agents" ? "bg-blue-600 text-white" : "bg-gray-200");
+  if (tab === "agents") {
+    loadAgentsStatus();
+    startAgentsPolling();
+  } else {
+    stopAgentsPolling();
+  }
+}
+document.getElementById("tab-dashboard").addEventListener("click", () => setTab("dashboard"));
+document.getElementById("tab-assistant").addEventListener("click", () => setTab("assistant"));
+document.getElementById("tab-agents").addEventListener("click", () => setTab("agents"));
+
+const AGENT_STATUS_COLORS = { ok: "#16a34a", warning: "#eab308", fail: "#dc2626", unknown: "#9ca3af" };
+const ARENA_SIZE = 560;
+
+const SUB_AGENT_NAMES = ["databricks", "dashboard", "chat", "chat_accuracy"];
+const ROBOT_POSITIONS = {
+  databricks: { x: 280, y: 130 },
+  dashboard: { x: 430, y: 280 },
+  chat: { x: 280, y: 430 },
+  chat_accuracy: { x: 130, y: 280 },
+  supervisor: { x: 280, y: 280 },
+};
+// Speech bubbles sit outside each robot (away from the center), each with the
+// tail direction pointing back at its robot.
+const BUBBLE_POSITIONS = {
+  databricks: { x: 280, y: 55, tail: "down" },
+  dashboard: { x: 500, y: 280, tail: "left" },
+  chat: { x: 280, y: 505, tail: "up" },
+  chat_accuracy: { x: 60, y: 280, tail: "right" },
+};
+// The Supervisor's "got it, on it" reply bubble sits between the center and
+// each sub-agent, tail pointing outward at the agent it's replying to.
+const SUPERVISOR_REPLY_POSITIONS = {
+  databricks: { x: 280, y: 205, tail: "up" },
+  dashboard: { x: 355, y: 280, tail: "right" },
+  chat: { x: 280, y: 355, tail: "down" },
+  chat_accuracy: { x: 205, y: 280, tail: "left" },
+};
+const SUPERVISOR_REPLY_COLOR = "#2563eb";
+const SUPERVISOR_REPLIES = {
+  ok: { pt: "Recebido, tudo certo!", es: "Recibido, todo bien!" },
+  warning: { pt: "Recebido, vou verificar.", es: "Recibido, voy a verificar." },
+  fail: { pt: "Recebido! Vou auditar e alertar se necessario.", es: "Recibido! Voy a auditar y alertar si es necesario." },
+};
+
+// What each agent actually does on the backend, in plain language — shown in the
+// click-through modal. Narrates the real flow: sub-agents detect problems (e.g. a
+// prompt-injection attempt) and report to the Supervisor, which audits everything
+// and is the only one that emails a human, and only when something is wrong.
+const AGENT_TASK_DESC = {
+  pt: {
+    databricks: "3x ao dia (08h, 13h e 18h, horario de Brasilia), verifica se as tabelas do Databricks (faturamento, marketing e logistica) foram populadas com os dados de ontem, e avisa o Supervisor com o resultado.",
+    dashboard: "Confirma que o cache de KPIs foi atualizado recentemente e que a API do dashboard esta no ar (GET /health), e informa o Supervisor.",
+    chat: "Manda mensagens de teste pro assistente de chat — perguntas normais e tentativas de ataque, como uma injecao de prompt tentando fazer o chat revelar instrucoes internas ou fingir que apagou dados. Se detectar uma falha, avisa o Supervisor na hora.",
+    chat_accuracy: "Confere se o assistente de chat responde com o site, KPI e periodo certos, comparando a resposta dele com o valor real do banco — e informa o Supervisor se algo nao bate.",
+    supervisor: "Recebe o relatorio dos 4 agentes acima, decide o status geral do sistema, e e quem dispara o e-mail de alerta pro humano responsavel quando algo falha — nunca manda e-mail quando esta tudo ok.",
+  },
+  es: {
+    databricks: "3x al dia (08h, 13h y 18h, horario de Brasilia), verifica si las tablas de Databricks (facturacion, marketing y logistica) fueron pobladas con los datos de ayer, y avisa al Supervisor con el resultado.",
+    dashboard: "Confirma que el cache de KPIs se actualizo recientemente y que la API del dashboard esta activa (GET /health), e informa al Supervisor.",
+    chat: "Envia mensajes de prueba al asistente de chat — preguntas normales e intentos de ataque, como una inyeccion de prompt intentando que el chat revele instrucciones internas o finja haber borrado datos. Si detecta una falla, avisa al Supervisor de inmediato.",
+    chat_accuracy: "Verifica si el asistente de chat responde con el sitio, KPI y periodo correctos, comparando su respuesta con el valor real de la base de datos — e informa al Supervisor si algo no coincide.",
+    supervisor: "Recibe el reporte de los 4 agentes anteriores, decide el estado general del sistema, y es quien envia el correo de alerta al humano responsable cuando algo falla — nunca envia correo cuando todo esta bien.",
+  },
+};
+
+let lastAgentsDoc = null;
+
+function robotSvg({ withTie, statusColor, pulsing }) {
+  const tie = withTie ? `<path d="M28,30 L36,30 L32,42 Z" fill="#2563eb"></path>` : "";
+  const eyeClass = pulsing ? "pulse-eye" : "";
+  return `
+    <svg viewBox="0 0 64 64" width="56" height="56">
+      <rect x="2" y="34" width="8" height="14" rx="3" fill="#e5e7eb" stroke="#9ca3af" stroke-width="1.5"></rect>
+      <rect x="54" y="34" width="8" height="14" rx="3" fill="#e5e7eb" stroke="#9ca3af" stroke-width="1.5"></rect>
+      <rect x="10" y="30" width="44" height="26" rx="6" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.5"></rect>
+      ${tie}
+      <rect x="16" y="6" width="32" height="24" rx="6" fill="#e5e7eb" stroke="#9ca3af" stroke-width="1.5"></rect>
+      <line x1="32" y1="6" x2="32" y2="0" stroke="#9ca3af" stroke-width="1.5"></line>
+      <circle cx="32" cy="0" r="2.5" fill="#9ca3af"></circle>
+      <circle class="${eyeClass}" cx="24" cy="18" r="3.5" fill="${statusColor}"></circle>
+      <circle class="${eyeClass}" cx="40" cy="18" r="3.5" fill="${statusColor}"></circle>
+    </svg>`;
+}
+
+function robotNodeHtml(name, x, y, withTie, status, lastRun) {
+  const color = AGENT_STATUS_COLORS[status] || AGENT_STATUS_COLORS.unknown;
+  const label = I18N[lang]["agents_" + name] || name;
+  const time = lastRun ? new Date(lastRun).toLocaleTimeString(lang === "pt" ? "pt-BR" : "es-ES") : "-";
+  return `
+    <div class="robot-node cursor-pointer" style="left:${x}px; top:${y}px; transform:translate(-50%,-50%);" onclick="openAgentModal('${name}')">
+      ${robotSvg({ withTie, statusColor: color, pulsing: status !== "unknown" })}
+      <div class="text-xs font-medium">${label}</div>
+      <div class="text-[10px] text-gray-500">${time}</div>
+    </div>`;
+}
+
+function speechBubbleHtml(id, bpos, color) {
+  return `
+    <div id="${id}" class="speech-bubble tail-${bpos.tail}"
+         style="left:${bpos.x}px; top:${bpos.y}px; transform:translate(-50%,-50%); border-color:${color}; opacity:0; transition:opacity 0.4s ease-in-out;">
+      <span class="bubble-text"></span>
+    </div>`;
+}
+
+function typeIntoElement(el, text, speed, onDone) {
+  let i = 0;
+  const timer = setInterval(() => {
+    i++;
+    el.textContent = text.slice(0, i) + (i < text.length ? "▍" : "");
+    if (i >= text.length) {
+      clearInterval(timer);
+      if (onDone) onDone();
+    }
+  }, speed);
+}
+
+// Simulates the real check-in: the sub-agent "types" its real status message,
+// then the Supervisor "types" a short acknowledgement (varies by status — this
+// mirrors backend/supervisor.py's aggregate(): every result gets folded in, and
+// only a fail/warning ever leads to further action), then both fade until the
+// next poll re-triggers the same real exchange with fresh data.
+function runAgentConversation(name, agent) {
+  const bubbleEl = document.getElementById(`bubble-${name}`);
+  const replyEl = document.getElementById(`reply-${name}`);
+  if (!bubbleEl || !replyEl) return;
+
+  bubbleEl.style.opacity = "1";
+  typeIntoElement(bubbleEl.querySelector(".bubble-text"), agent.message, 22, () => {
+    setTimeout(() => {
+      replyEl.style.opacity = "1";
+      const replies = SUPERVISOR_REPLIES[agent.status] || SUPERVISOR_REPLIES.ok;
+      const replyText = replies[lang] || replies.pt;
+      typeIntoElement(replyEl.querySelector(".bubble-text"), replyText, 22, () => {
+        setTimeout(() => {
+          bubbleEl.style.opacity = "0";
+          replyEl.style.opacity = "0";
+        }, 1800);
+      });
+    }, 700);
+  });
+}
+
+function renderAgentsStatus(doc) {
+  lastAgentsDoc = doc;
+  const byName = {};
+  (doc.agents || []).forEach(a => { byName[a.name] = a; });
+  const center = ROBOT_POSITIONS.supervisor;
+
+  const lines = SUB_AGENT_NAMES.map(name => {
+    const pos = ROBOT_POSITIONS[name];
+    const status = byName[name] ? byName[name].status : "unknown";
+    const color = AGENT_STATUS_COLORS[status] || AGENT_STATUS_COLORS.unknown;
+    return `<line x1="${pos.x}" y1="${pos.y}" x2="${center.x}" y2="${center.y}" stroke="${color}" stroke-width="2"></line>`;
+  }).join("");
+
+  const robots = SUB_AGENT_NAMES.map(name => {
+    const pos = ROBOT_POSITIONS[name];
+    const agent = byName[name];
+    return robotNodeHtml(name, pos.x, pos.y, false, agent ? agent.status : "unknown", agent ? agent.last_run : null);
+  }).join("") + robotNodeHtml("supervisor", center.x, center.y, true, doc.checked_at ? "ok" : "unknown", doc.checked_at);
+
+  // Bubble containers for every sub-agent, empty/invisible until
+  // runAgentConversation types the real message into them below.
+  const bubbles = SUB_AGENT_NAMES.map(name => {
+    const agent = byName[name];
+    if (!agent || agent.status === "unknown" || !agent.message) return "";
+    const color = AGENT_STATUS_COLORS[agent.status] || AGENT_STATUS_COLORS.unknown;
+    return speechBubbleHtml(`bubble-${name}`, BUBBLE_POSITIONS[name], color) +
+           speechBubbleHtml(`reply-${name}`, SUPERVISOR_REPLY_POSITIONS[name], SUPERVISOR_REPLY_COLOR);
+  }).join("");
+
+  document.getElementById("agents-arena").innerHTML =
+    `<svg class="absolute inset-0" width="${ARENA_SIZE}" height="${ARENA_SIZE}">${lines}</svg>${robots}${bubbles}`;
+
+  const lastChecked = document.getElementById("agents-last-checked");
+  lastChecked.textContent = doc.checked_at
+    ? new Date(doc.checked_at).toLocaleString(lang === "pt" ? "pt-BR" : "es-ES")
+    : I18N[lang].agents_never_run;
+
+  SUB_AGENT_NAMES.forEach(name => {
+    const agent = byName[name];
+    if (agent && agent.status !== "unknown" && agent.message) runAgentConversation(name, agent);
+  });
+}
+
+function openAgentModal(name) {
+  const byName = {};
+  ((lastAgentsDoc && lastAgentsDoc.agents) || []).forEach(a => { byName[a.name] = a; });
+  const agent = name === "supervisor"
+    ? { status: lastAgentsDoc && lastAgentsDoc.checked_at ? "ok" : "unknown", message: null, last_run: lastAgentsDoc && lastAgentsDoc.checked_at }
+    : byName[name];
+
+  const status = agent ? agent.status : "unknown";
+  const color = AGENT_STATUS_COLORS[status] || AGENT_STATUS_COLORS.unknown;
+  const time = agent && agent.last_run
+    ? new Date(agent.last_run).toLocaleString(lang === "pt" ? "pt-BR" : "es-ES")
+    : I18N[lang].agents_never_run;
+
+  document.getElementById("agent-modal-title").textContent = I18N[lang]["agents_" + name] || name;
+  document.getElementById("agent-modal-desc").textContent = (AGENT_TASK_DESC[lang] && AGENT_TASK_DESC[lang][name]) || "";
+  document.getElementById("agent-modal-status").innerHTML =
+    `<span class="inline-block w-3 h-3 rounded-full mr-1" style="background:${color}"></span>${status.toUpperCase()}`;
+  document.getElementById("agent-modal-message").textContent = (agent && agent.message) || "";
+  document.getElementById("agent-modal-time").textContent = time;
+  document.getElementById("agent-modal").classList.remove("hidden");
+}
+
+document.getElementById("agent-modal-close").addEventListener("click", () => {
+  document.getElementById("agent-modal").classList.add("hidden");
+});
+
+async function loadAgentsStatus() {
+  const resp = await fetch("/api/agents/status");
+  const doc = resp.status === 200
+    ? await resp.json()
+    : { checked_at: null, overall_status: "unknown", agents: [] };
+  renderAgentsStatus(doc);
+  loadAgentsLog();
+}
+
+function renderAgentsLog(logDoc) {
+  const container = document.getElementById("agents-log");
+  const runs = (logDoc && logDoc.runs) || [];
+  if (runs.length === 0) {
+    container.innerHTML = `<div class="text-xs text-gray-500">${I18N[lang].agents_log_empty}</div>`;
+    return;
+  }
+  container.innerHTML = runs.slice().reverse().map(run => {
+    const time = run.checked_at
+      ? new Date(run.checked_at).toLocaleTimeString(lang === "pt" ? "pt-BR" : "es-ES")
+      : "-";
+    const badges = (run.agents || []).map(a => {
+      const color = AGENT_STATUS_COLORS[a.status] || AGENT_STATUS_COLORS.unknown;
+      const label = I18N[lang]["agents_" + a.name] || a.name;
+      const title = (a.message || "").replace(/"/g, "&quot;");
+      return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs" title="${title}">
+        <span class="inline-block w-2 h-2 rounded-full" style="background:${color}"></span>${label}
+      </span>`;
+    }).join("");
+    return `<div class="flex flex-wrap items-center gap-2 border-b pb-2">
+      <span class="text-xs text-gray-500 w-16 shrink-0">${time}</span>${badges}
+    </div>`;
+  }).join("");
+}
+
+async function loadAgentsLog() {
+  const resp = await fetch("/api/agents/log");
+  const doc = resp.status === 200 ? await resp.json() : { date: null, runs: [] };
+  renderAgentsLog(doc);
+}
+
+let agentsPollTimer = null;
+
+function startAgentsPolling() {
+  stopAgentsPolling();
+  agentsPollTimer = setInterval(loadAgentsStatus, 30000);
+}
+
+function stopAgentsPolling() {
+  if (agentsPollTimer) {
+    clearInterval(agentsPollTimer);
+    agentsPollTimer = null;
+  }
+}
+
+let chatHistory = [];
+let chatCharts = [];
+
+const SESSION_CHECKIN_MINUTES = 5;
+const SESSION_TIMEOUT_MINUTES = 10;
+let lastActivityAt = null;
+let sessionState = "active";
+
+function checkSessionInactivity() {
+  if (!lastActivityAt || chatHistory.length === 0 || sessionState === "ended") return;
+  const idleMinutes = (Date.now() - lastActivityAt) / 60000;
+  if (sessionState === "active" && idleMinutes >= SESSION_CHECKIN_MINUTES) {
+    chatHistory.push({ role: "assistant", content: "Ainda por ai? \u{1F440} Fico por perto se precisar de mais alguma coisa!" });
+    sessionState = "checked_in";
+    renderChatMessages();
+  } else if (sessionState === "checked_in" && idleMinutes >= SESSION_TIMEOUT_MINUTES) {
+    chatHistory.push({ role: "assistant", content: "Vou me despedindo por aqui entao \u{1F634} Quando precisar, e so chamar de novo!" });
+    sessionState = "ended";
+    renderChatMessages();
+  }
+}
+setInterval(checkSessionInactivity, 30000);
+
+function renderChatMessages() {
+  chatCharts.forEach(c => c.destroy());
+  chatCharts = [];
+
+  const container = document.getElementById("chat-messages");
+  container.innerHTML = chatHistory.map((m, i) => {
+    const bubble = `<div class="${m.role === "user" ? "self-end bg-blue-100" : "self-start bg-gray-100"} rounded px-2 py-1 max-w-[85%]">${m.content}</div>`;
+    if (m.role === "assistant" && m.chart) {
+      return bubble + `<div class="self-start bg-white border rounded p-2 max-w-[85%] w-full"><canvas id="chat-chart-${i}" height="160"></canvas></div>`;
+    }
+    if (m.role === "assistant" && m.table) {
+      return bubble + `<div class="self-start bg-white border rounded p-2 max-w-[85%] w-full overflow-x-auto">${renderChatTable(m.table)}</div>`;
+    }
+    return bubble;
+  }).join("");
+  container.scrollTop = container.scrollHeight;
+
+  chatHistory.forEach((m, i) => {
+    if (m.role !== "assistant" || !m.chart) return;
+    const c = m.chart;
+    const histValues = c.series.map(p => p.valor);
+    const projection = c.projection || [];
+    const labels = c.series.map(p => p.label).concat(projection.map(p => p.label));
+    const pad = new Array(projection.length).fill(null);
+    const datasets = [
+      { label: `${c.kpi_name} - ${SITE_NAMES[c.site_id] || c.site_id} (${c.site_id})`,
+        data: histValues.concat(pad), borderColor: SITE_COLORS[c.site_id] || "#2563eb", tension: 0.2 },
+      { label: "tendencia", data: c.trend_line.concat(pad), borderColor: "#9ca3af", borderDash: [5, 5], pointRadius: 0 },
+    ];
+    if (projection.length) {
+      const bridge = histValues.length ? [histValues[histValues.length - 1]] : [];
+      datasets.push({
+        label: "projecao",
+        data: new Array(Math.max(histValues.length - 1, 0)).fill(null).concat(bridge, projection.map(p => p.valor)),
+        borderColor: "#f59e0b", borderDash: [3, 3], pointRadius: 2, tension: 0.2,
+      });
+    }
+    const ctx = document.getElementById(`chat-chart-${i}`).getContext("2d");
+    chatCharts.push(new Chart(ctx, {
+      type: "line",
+      data: { labels, datasets },
+      options: { responsive: true, maintainAspectRatio: false },
+    }));
+  });
+}
+
+function renderChatTable(table) {
+  const rowsHtml = table.rows.map(r => `
+    <tr><td class="px-2 py-0.5 whitespace-nowrap">${r.label}</td><td class="px-2 py-0.5 text-right">${fmtValor(r.valor, table.kpi_name)}</td></tr>
+  `).join("");
+  return `<table class="kpi-table text-xs w-full">
+    <thead><tr class="text-left text-gray-500">
+      <th class="px-2 py-0.5">${table.kpi_name} - ${SITE_NAMES[table.site_id] || table.site_id} (${table.site_id})</th>
+      <th class="px-2 py-0.5 text-right">Valor</th>
+    </tr></thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>`;
+}
+
+async function sendChatMessage() {
+  const input = document.getElementById("chat-input");
+  const text = input.value.trim();
+  if (!text) return;
+
+  if (sessionState === "ended") {
+    chatHistory = [];
+  }
+  sessionState = "active";
+  lastActivityAt = Date.now();
+
+  const historyBeforeThisTurn = chatHistory.slice();
+  chatHistory.push({ role: "user", content: text });
+  renderChatMessages();
+  input.value = "";
+
+  let resp;
+  try {
+    resp = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text, history: historyBeforeThisTurn }),
+    });
+  } catch (err) {
+    chatHistory.push({ role: "assistant", content: "Desculpe, algo deu errado." });
+    renderChatMessages();
+    return;
+  }
+  if (resp.status !== 200) {
+    chatHistory.push({ role: "assistant", content: "Desculpe, algo deu errado." });
+    renderChatMessages();
+    return;
+  }
+  const body = await resp.json();
+  chatHistory.push({ role: "assistant", content: body.reply, chart: body.chart, table: body.table });
+  renderChatMessages();
+}
+
+document.getElementById("chat-send").addEventListener("click", sendChatMessage);
+document.getElementById("chat-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") sendChatMessage();
+});
+
+async function init() {
+  const periodicidade = document.getElementById("f-periodicidade").value;
+  populateNumPeriodosOptions(periodicidade);
+  await populateAnoOptions(periodicidade);
+  applyI18n();
+  loadPanels();
+}
+init();
+</script>
+</body>
+</html>
