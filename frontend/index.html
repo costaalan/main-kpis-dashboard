@@ -6,10 +6,25 @@
 <title>Main KPIs Dashboard</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
 .modal-overlay { background: rgba(0,0,0,0.5); }
 .kpi-table tr:nth-child(even) { background-color: #f3f4f6; }
 .kpi-table td:nth-child(even), .kpi-table th:nth-child(even) { background-color: rgba(0,0,0,0.04); }
+
+/* Markdown chat styles */
+.chat-markdown { line-height: 1.6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Color Emoji', sans-serif; }
+.chat-markdown h1, .chat-markdown h2, .chat-markdown h3 { font-weight: 700; margin: 8px 0 4px; }
+.chat-markdown h2 { font-size: 1.1em; color: #1e40af; }
+.chat-markdown h3 { font-size: 1em; color: #334155; }
+.chat-markdown table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 0.85em; }
+.chat-markdown th { background: #2563eb; color: white; padding: 6px 10px; text-align: left; font-weight: 600; }
+.chat-markdown td { padding: 5px 10px; border-bottom: 1px solid #e2e8f0; }
+.chat-markdown tr:nth-child(even) td { background: #f8fafc; }
+.chat-markdown strong { color: #1e293b; }
+.chat-markdown code { background: #f1f5f9; padding: 1px 4px; border-radius: 3px; font-size: 0.9em; }
+.chat-markdown ul, .chat-markdown ol { margin: 4px 0; padding-left: 20px; }
+.chat-markdown hr { border: none; border-top: 1px solid #e2e8f0; margin: 10px 0; }
 #agents-arena { position: relative; width: 560px; height: 560px; max-width: 100%; margin: 0 auto; }
 .robot-node { position: absolute; display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .pulse-eye { animation: eye-pulse 1.4s ease-in-out infinite; }
@@ -120,6 +135,13 @@
 </div>
 
 <div id="view-assistant" class="hidden bg-white rounded shadow p-3 w-full flex flex-col h-[calc(100vh-140px)]">
+  <div class="flex items-center justify-between mb-2 min-h-[24px]">
+    <div id="chat-timer" class="hidden text-xs text-gray-400"></div>
+    <div id="chat-spinner" class="hidden flex items-center gap-1 text-xs text-blue-600">
+      <svg class="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+      Buscando dados...
+    </div>
+  </div>
   <div id="chat-messages" class="flex-1 overflow-y-auto flex flex-col gap-2 mb-3 text-sm"></div>
   <div class="flex gap-2">
     <input id="chat-input" type="text" class="border rounded p-2 flex-1"
@@ -739,6 +761,28 @@ const SESSION_CHECKIN_MINUTES = 5;
 const SESSION_TIMEOUT_MINUTES = 10;
 let lastActivityAt = null;
 let sessionState = "active";
+let sessionStartAt = null;
+let chatTimerInterval = null;
+
+function startChatTimer() {
+  if (chatTimerInterval) return;
+  sessionStartAt = Date.now();
+  document.getElementById("chat-timer").classList.remove("hidden");
+  chatTimerInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - sessionStartAt) / 1000);
+    const m = Math.floor(elapsed / 60);
+    const s = elapsed % 60;
+    document.getElementById("chat-timer").textContent = `⏱ ${m}:${String(s).padStart(2, "0")}`;
+  }, 1000);
+}
+
+function stopChatTimer() {
+  if (chatTimerInterval) { clearInterval(chatTimerInterval); chatTimerInterval = null; }
+  document.getElementById("chat-timer").classList.add("hidden");
+}
+
+function showSpinner() { document.getElementById("chat-spinner").classList.remove("hidden"); }
+function hideSpinner() { document.getElementById("chat-spinner").classList.add("hidden"); }
 
 function checkSessionInactivity() {
   if (!lastActivityAt || chatHistory.length === 0 || sessionState === "ended") return;
@@ -755,18 +799,53 @@ function checkSessionInactivity() {
 }
 setInterval(checkSessionInactivity, 30000);
 
+function replaceFlags(html) {
+  const FLAG_CDN = 'https://flagcdn.com/24x18';
+  const sites = [
+    {code: 'MLB', flag: 'br', emoji: '\uD83C\uDDE7\uD83C\uDDF7'},
+    {code: 'MLM', flag: 'mx', emoji: '\uD83C\uDDF2\uD83C\uDDFD'},
+    {code: 'MCO', flag: 'co', emoji: '\uD83C\uDDE8\uD83C\uDDF4'},
+    {code: 'MLA', flag: 'ar', emoji: '\uD83C\uDDE6\uD83C\uDDF7'},
+    {code: 'MLC', flag: 'cl', emoji: '\uD83C\uDDE8\uD83C\uDDF1'},
+    {code: 'MLU', flag: 'uy', emoji: '\uD83C\uDDFA\uD83C\uDDFE'},
+  ];
+  
+  sites.forEach(s => {
+    const img = `<img src="${FLAG_CDN}/${s.flag}.png" width="24" height="18" style="display:inline;vertical-align:middle;margin:0 2px" alt="">`;
+    // 1. Replace emoji+code: "🇧🇷 MLB" -> "MLB <flag>"
+    html = html.replaceAll(s.emoji + ' ' + s.code, s.code + ' ' + img);
+    html = html.replaceAll(s.emoji + s.code, s.code + img);
+    // 2. Replace emoji alone (if code follows separately)
+    html = html.replaceAll(s.emoji, img);
+    // 3. Replace code+lowercase: "MLB br" -> "MLB <flag>"
+    html = html.replaceAll(s.code + ' ' + s.flag, s.code + ' ' + img);
+    // 4. Insert flag after bare code in table cells
+    html = html.replaceAll('>' + s.code + '<', '>' + s.code + ' ' + img + '<');
+    html = html.replaceAll('| ' + s.code + ' |', '| ' + s.code + ' ' + img + ' |');
+    html = html.replaceAll('|' + s.code + '|', '|' + s.code + ' ' + img + '|');
+  });
+  // Clean up any stray lowercase country codes
+  ['br','mx','co','ar','cl','uy'].forEach(c => {
+    html = html.replaceAll(' ' + c + ' ', ' ');
+  });
+  return html;
+}
+
 function renderChatMessages() {
   chatCharts.forEach(c => c.destroy());
   chatCharts = [];
 
   const container = document.getElementById("chat-messages");
   container.innerHTML = chatHistory.map((m, i) => {
-    const bubble = `<div class="${m.role === "user" ? "self-end bg-blue-100" : "self-start bg-gray-100"} rounded px-2 py-1 max-w-[85%]">${m.content}</div>`;
+    const rendered = m.role === "assistant"
+      ? `<div class="chat-markdown">${replaceFlags(marked.parse(m.content))}</div>`
+      : m.content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const bubble = `<div class="${m.role === "user" ? "self-end bg-blue-100" : "self-start bg-gray-100"} rounded px-3 py-2 max-w-[90%]">${rendered}</div>`;
     if (m.role === "assistant" && m.chart) {
-      return bubble + `<div class="self-start bg-white border rounded p-2 max-w-[85%] w-full"><canvas id="chat-chart-${i}" height="160"></canvas></div>`;
+      return bubble + `<div class="self-start bg-white border rounded p-2 max-w-[90%] w-full"><canvas id="chat-chart-${i}" height="160"></canvas></div>`;
     }
     if (m.role === "assistant" && m.table) {
-      return bubble + `<div class="self-start bg-white border rounded p-2 max-w-[85%] w-full overflow-x-auto">${renderChatTable(m.table)}</div>`;
+      return bubble + `<div class="self-start bg-white border rounded p-2 max-w-[90%] w-full overflow-x-auto">${renderChatTable(m.table)}</div>`;
     }
     return bubble;
   }).join("");
@@ -821,14 +900,38 @@ async function sendChatMessage() {
 
   if (sessionState === "ended") {
     chatHistory = [];
+    stopChatTimer();
   }
   sessionState = "active";
   lastActivityAt = Date.now();
+  if (!sessionStartAt) startChatTimer();
 
   const historyBeforeThisTurn = chatHistory.slice();
   chatHistory.push({ role: "user", content: text });
   renderChatMessages();
   input.value = "";
+  showSpinner();
+
+  // Detect direct export commands
+  const msgLower = text.toLowerCase();
+  if (msgLower.includes("gere") && (msgLower.includes("ppt") || msgLower.includes("powerpoint") || msgLower.includes("apresentação"))) {
+    hideSpinner();
+    chatHistory.push({ role: "assistant", content: "Gerando apresentação PowerPoint..." });
+    renderChatMessages();
+    await exportChat("ppt");
+    chatHistory.push({ role: "assistant", content: "✅ PPT gerado com sucesso! O download deve começar automaticamente." });
+    renderChatMessages();
+    return;
+  }
+  if (msgLower.includes("gere") && (msgLower.includes("html") || msgLower.includes("relatório") || msgLower.includes("relatorio"))) {
+    hideSpinner();
+    chatHistory.push({ role: "assistant", content: "Gerando relatório HTML..." });
+    renderChatMessages();
+    await exportChat("html");
+    chatHistory.push({ role: "assistant", content: "✅ Relatório HTML gerado com sucesso! O download deve começar automaticamente." });
+    renderChatMessages();
+    return;
+  }
 
   let resp;
   try {
@@ -838,10 +941,12 @@ async function sendChatMessage() {
       body: JSON.stringify({ message: text, history: historyBeforeThisTurn }),
     });
   } catch (err) {
+    hideSpinner();
     chatHistory.push({ role: "assistant", content: "Desculpe, algo deu errado." });
     renderChatMessages();
     return;
   }
+  hideSpinner();
   if (resp.status !== 200) {
     chatHistory.push({ role: "assistant", content: "Desculpe, algo deu errado." });
     renderChatMessages();
@@ -856,6 +961,29 @@ document.getElementById("chat-send").addEventListener("click", sendChatMessage);
 document.getElementById("chat-input").addEventListener("keydown", (e) => {
   if (e.key === "Enter") sendChatMessage();
 });
+
+// Export function (triggered by chat commands like "gere um ppt")
+async function exportChat(format) {
+  const msgs = chatHistory.filter(m => m.role === "user" || m.role === "assistant")
+    .map(m => ({ role: m.role, content: m.content, chart: m.chart, table: m.table }));
+  try {
+    const resp = await fetch(`api/export/${format}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: msgs }),
+    });
+    if (resp.status !== 200) { alert("Erro ao gerar " + format.toUpperCase()); return; }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `relatorio-kpis.${format === "ppt" ? "pptx" : "html"}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    alert("Erro ao exportar: " + e.message);
+  }
+}
 
 async function init() {
   const periodicidade = document.getElementById("f-periodicidade").value;

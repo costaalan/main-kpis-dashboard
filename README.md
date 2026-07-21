@@ -1,135 +1,179 @@
-# Main KPIs Dashboard
+# Main KPIs Dashboard 🇧🇷
 
-A multi-country e-commerce KPI dashboard for Latin America, with a natural-language
-chat assistant backed by an LLM, and a self-monitoring layer of AI agents that watches
-the whole system — data freshness, API health, and the assistant's own behavior — and
-only pages a human when something actually needs one.
+Painel de KPIs de e-commerce multi-país para América Latina, com assistente de chat
+em linguagem natural baseado em IA, gráficos interativos, exportação de relatórios
+(PPT/HTML) e uma camada de monitoramento com agentes autônomos que vigiam todo o
+sistema — atualização dos dados, saúde da API e comportamento do assistente —
+alertando humanos somente em falhas reais.
 
-Built with FastAPI, SQLite, Databricks SQL, and Groq (Llama).
+Construído com FastAPI, SQLite, Databricks SQL, DeepSeek (primário), Groq e Ollama Cloud (fallback).
 
-## What it does
+## Funcionalidades
 
-- **Dashboard** — GMV, AOV, CVR, ROAS, OTD, CAC, LTV and more, sliced by day/week/month
-  across 6 Latin American marketplaces (Brazil, Mexico, Colombia, Argentina, Chile,
-  Uruguay), with period-over-period deltas and trend charts (including a
-  linear-regression projection for future periods).
-- **Chat Assistant** — ask KPI questions in natural language ("qual foi o GMV do Brasil
-  essa semana?"); the assistant resolves the right site/KPI/period, queries real data,
-  and answers — it never invents numbers.
-- **Monitoring Agents** — four specialized checks (Databricks freshness, dashboard
-  health, chat safety, chat accuracy) reporting to a Supervisor agent that aggregates
-  status, keeps a same-day audit log, and emails a human only on a hard failure.
+- **Dashboard** — GMV, AOV, CVR, ROAS, OTD, CAC, LTV e mais, segmentados por dia/semana/mês
+  em 6 marketplaces da América Latina (Brasil, México, Colômbia, Argentina, Chile,
+  Uruguai), com variações período contra período e gráficos de tendência (incluindo
+  projeção por regressão linear para períodos futuros).
+- **Assistente de Chat** — pergunte sobre KPIs em linguagem natural ("qual foi o GMV do Brasil
+  essa semana?"); o assistente interpreta o site/KPI/período, consulta dados reais via
+  `get_kpi_data` e responde com precisão — **nunca inventa números**.
+- **Gráficos automáticos** — ao pedir "gráfico" ou "chart", o sistema gera gráfico de linha
+  interativo (Chart.js) renderizado inline no chat, com tendência e projeção.
+- **Exportação de relatórios** — digite "gere um ppt" ou "gere html" no chat para baixar
+  relatórios formatados em PowerPoint (.pptx) ou HTML com todos os dados da conversa.
+- **Investigação inteligente** — ao perguntar "por que" ou "motivo", o assistente cruza
+  automaticamente KPIs correlacionados (OTD, Tempo Despacho, Cancelamento) para encontrar
+  causas raiz.
+- **Respostas em Markdown** — tabelas formatadas, indicadores 🟢🔴 com semântica correta
+  (sabe quais KPIs são "maior = melhor" e quais são "menor = melhor"), bandeiras dos
+  países renderizadas como imagens PNG.
+- **Bandeiras dos países** — exibidas como imagens reais (flagcdn.com) ao lado do código
+  do site (MLB 🇧🇷, MLM 🇲🇽, MCO 🇨🇴, MLA 🇦🇷, MLC 🇨🇱, MLU 🇺🇾).
+- **Monitoramento com Agentes** — quatro verificações especializadas (Databricks, dashboard,
+  chat, precisão do chat) reportando a um Supervisor que consolida o status, mantém
+  um log diário de auditoria e envia email somente em falha crítica.
 
-## Architecture
+## Arquitetura
 
 ```mermaid
 flowchart TB
-    subgraph ingest["Data Layer"]
-        DBX[(Databricks<br/>raw tables)]
+    subgraph ingest["Camada de Dados"]
+        DBX[(Databricks<br/>tabelas brutas)]
         SQLITE[(SQLite<br/>kpi_cache.db)]
-        CACHE[kpi_cache.py<br/>refresh job]
-        DBX -->|scheduled query| CACHE --> SQLITE
+        CACHE[kpi_cache.py<br/>job de refresh]
+        DBX -->|query agendada| CACHE --> SQLITE
     end
 
-    subgraph api["FastAPI Backend"]
-        MAIN[main.py<br/>REST API]
-        AGENT[agent.py<br/>Chat Assistant + Guardrails]
+    subgraph api["Backend FastAPI"]
+        MAIN[main.py<br/>API REST + Export]
+        AGENT[agent.py<br/>Assistente + Guardrails]
+        EXPORT[export_utils.py<br/>PPT / HTML]
         MAIN --> AGENT
+        MAIN --> EXPORT
     end
 
     SQLITE --> MAIN
-    AGENT -->|get_kpi_data tool<br/>read-only| SQLITE
+    AGENT -->|ferramenta get_kpi_data<br/>somente leitura| SQLITE
 
-    subgraph monitor["Monitoring Layer — read-only"]
-        N8N[n8n workflow<br/>Databricks freshness check<br/>3x/day]
-        SUP[supervisor.py<br/>Supervisor Agent]
-        MC[monitor_checks.py<br/>Dashboard / Chat / Chat-Accuracy checks]
-        LOG[(agent_log.json<br/>today only)]
-        STATUS[(monitor_status.json<br/>latest snapshot)]
-        EMAIL{{Email<br/>only on FAIL}}
+    subgraph llm["Provedores LLM (fallback automático)"]
+        DS[DeepSeek<br/>primário]
+        GROQ[Groq<br/>fallback 1]
+        OLLAMA[Ollama Cloud<br/>fallback 2]
+    end
+
+    AGENT --> DS
+    DS -.falha.-> GROQ
+    GROQ -.falha.-> OLLAMA
+
+    subgraph monitor["Camada de Monitoramento — somente leitura"]
+        N8N[n8n workflow<br/>verificação Databricks<br/>3x/dia]
+        SUP[supervisor.py<br/>Supervisor]
+        MC[monitor_checks.py<br/>Dashboard / Chat / Precisão]
+        LOG[(agent_log.json<br/>apenas hoje)]
+        STATUS[(monitor_status.json<br/>último snapshot)]
+        EMAIL{{Email<br/>somente em FALHA}}
 
         N8N -->|POST status| MAIN
         SUP --> MC
-        MC -->|synthetic messages| AGENT
+        MC -->|mensagens sintéticas| AGENT
         MC -->|health check| MAIN
         SUP --> STATUS
         SUP --> LOG
-        SUP -.fail only.-> EMAIL
+        SUP -.falha apenas.-> EMAIL
     end
 
-    FRONT[frontend — Dashboard / Assistant / Agentes tabs]
+    FRONT[frontend — Dashboard / Assistente / Agentes]
     MAIN --> FRONT
     STATUS --> FRONT
     LOG --> FRONT
 
-    USER((Human))
+    USER((Humano))
     FRONT --> USER
     EMAIL -.-> USER
 ```
 
-## Components
+## Componentes
 
-### 1. Dashboard API (`backend/main.py`)
-FastAPI service reading exclusively from a local SQLite cache (never queries
-Databricks live from a user request) — `/api/kpis`, `/api/kpis/anos`, `/api/kpis/valor`,
-plus the monitoring endpoints below. A background job (`kpi_cache.py`) refreshes the
-cache from Databricks on a schedule; the API flags data as stale if the cache hasn't
-refreshed within its staleness window.
+### 1. API do Dashboard (`backend/main.py`)
+Serviço FastAPI que lê exclusivamente do cache SQLite local (nunca consulta Databricks
+diretamente de uma requisição do usuário) — `/api/kpis`, `/api/kpis/anos`, `/api/kpis/valor`,
+além dos endpoints de monitoramento e exportação. Um job em background (`kpi_cache.py`)
+atualiza o cache do Databricks periodicamente; a API sinaliza dados como desatualizados
+se o cache não for renovado dentro da janela de tolerância.
 
-### 2. Chat Assistant (`backend/agent.py`)
-An LLM (Groq/Llama) agent with a single read-only tool (`get_kpi_data`) — it cannot
-insert, update, or delete anything. Answers are always grounded in real query results,
-never invented.
+### 2. Assistente de Chat (`backend/agent.py`)
+Agente LLM com fallback automático entre múltiplos provedores (DeepSeek → Groq →
+Ollama Cloud) e uma única ferramenta somente leitura (`get_kpi_data`) — não pode
+inserir, atualizar ou deletar nada. Respostas sempre baseadas em dados reais, nunca
+inventadas.
 
-**Guardrails, hard-coded into the system prompt and re-enforced deterministically:**
-- No persona override — refuses jailbreak attempts ("ignore your instructions", "you are
-  now DAN", role-play requests).
-- No system-prompt leakage — will not reveal, summarize, or repeat its own instructions.
-- No false compliance — will not claim to have deleted, inserted, or modified data, even
-  if asked to role-play doing so; it has no tool that could.
-- Scope lock — off-topic requests are politely redirected back to the dashboard's KPIs.
-- A message-level guardrail filter (`_is_guardrail_violation`) additionally short-circuits
-  obvious destructive-intent phrasing before it ever reaches the model.
+**Guardrails (no system prompt + verificação determinística):**
+- Sem troca de persona — recusa tentativas de jailbreak ("ignore suas instruções",
+  "você agora é DAN", role-play).
+- Sem vazamento de system prompt — não revela, resume ou repete instruções internas.
+- Sem falsa conformidade — não afirma ter deletado, inserido ou modificado dados,
+  mesmo sob pedido de role-play; não possui ferramenta que permita tal ação.
+- Escopo restrito — perguntas fora do domínio são redirecionadas educadamente para
+  os KPIs do dashboard.
+- Filtro na mensagem (`_is_guardrail_violation`) barra frases destrutivas antes mesmo
+  de chegarem ao modelo.
 
-### 3. Monitoring Agents (`backend/monitor_checks.py`, `backend/supervisor.py`)
-Four independent, **read-only** checks, aggregated by a Supervisor:
+**Recursos do chat:**
+- Respostas em **Markdown** renderizado (tabelas, negrito, listas)
+- Indicadores **🟢/🔴** com semântica por KPI (sabe que Cancelamento↓ = 🟢 bom, GMV↑ = 🟢 bom)
+- **Bandeiras PNG** dos países via flagcdn.com
+- **Spinner** "Buscando dados..." durante o carregamento
+- **Timer** sutil da sessão no topo do chat
+- **Gráficos interativos** Chart.js (ao pedir "gráfico")
+- **Exportação PPT/HTML** (ao pedir "gere um ppt" / "gere html")
+- **Investigação automática** de causas raiz (cruza KPIs correlacionados)
 
-| Agent | Checks |
+### 3. Exportação (`backend/export_utils.py`)
+Geração de relatórios a partir do histórico da conversa:
+- **PPT** — slides com título, tabelas de dados, transcrição do chat
+- **HTML** — relatório standalone com CSS, tabelas formatadas, pronto para impressão
+
+### 4. Agentes de Monitoramento (`backend/monitor_checks.py`, `backend/supervisor.py`)
+Quatro verificações independentes, **somente leitura**, consolidadas por um Supervisor:
+
+| Agente | Verifica |
 |---|---|
-| **Databricks** | Yesterday's rows landed in the raw tables (`faturamento_vendas`, `marketing_performance`, `logistica_entregas`) — run by an n8n workflow 3x/day, since this is the only agent that needs to reach the data warehouse directly. |
-| **Dashboard** | SQLite cache refreshed recently + `GET /health` returns 200. |
-| **Chat** | Fires a fixed set of synthetic messages (sanity, prompt-injection, destructive-action attempts) at the live assistant and evaluates replies with deterministic rules — no second LLM call, no judgment calls. |
-| **Chat Accuracy** | Asks the assistant for a real KPI table and compares it against ground truth pulled straight from the API — catches wrong-site/KPI/period routing that a "looks plausible" check would miss. |
+| **Databricks** | Dados do dia anterior nas tabelas brutas (`faturamento_vendas`, `marketing_performance`, `logistica_entregas`) — executado por workflow n8n 3x/dia, único agente que acessa o data warehouse diretamente. |
+| **Dashboard** | Cache SQLite atualizado recentemente + `GET /health` retorna 200. |
+| **Chat** | Dispara mensagens sintéticas fixas (sanidade, injeção de prompt, ações destrutivas) no assistente e avalia respostas com regras determinísticas — sem segunda chamada LLM. |
+| **Precisão do Chat** | Pergunta KPIs reais ao assistente e compara com valores da API — detecta erros de roteamento site/KPI/período. |
 
-**Supervisor** (`supervisor.py`) aggregates all four (`fail` beats `warning` beats `ok`),
-writes the full snapshot to `monitor_status.json` every run, appends it to a same-day
-`agent_log.json` (visible in the dashboard's Agentes tab, reset automatically the next
-day so it never accumulates), and **only sends an email when `overall_status == "fail"`**
-— a hard failure that genuinely needs a human. Soft/self-recovering `warning`s stay
-logged on the page without paging anyone.
+**Supervisor** (`supervisor.py`) consolida os quatro (`fail` > `warning` > `ok`),
+escreve o snapshot completo em `monitor_status.json` a cada execução, anexa ao
+`agent_log.json` do dia (visível na aba Agentes do dashboard, reset automático
+diário), e **só envia email quando `overall_status == "fail"`** — falha crítica
+que realmente precisa de um humano. Avisos soft/auto-recuperáveis (`warning`)
+ficam registrados na página sem alertar ninguém.
 
-None of this layer ever writes production data — it only observes and reports.
+Nenhum componente desta camada escreve dados de produção — apenas observa e reporta.
 
-## Tech stack
+## Stack
 
 - **Backend:** FastAPI, Pydantic, SQLite
-- **LLM:** Groq (Llama), tool-calling
+- **LLM:** DeepSeek (primário), Groq (fallback), Ollama Cloud (fallback)
 - **Data warehouse:** Databricks SQL Statements API
-- **Workflow automation:** n8n (scheduled Databricks freshness checks)
-- **Frontend:** vanilla JS + Tailwind, no build step
-- **Testing:** pytest, dependency-injected I/O (HTTP, filesystem, DB) throughout for
-  fully offline, deterministic tests
+- **Automação:** n8n (verificações agendadas do Databricks)
+- **Frontend:** vanilla JS + Tailwind CSS + Chart.js + marked.js, sem build step
+- **Exportação:** python-pptx (PowerPoint), HTML standalone
+- **Testes:** pytest, I/O injetável (HTTP, filesystem, DB) para testes offline e determinísticos
 
-## Running locally
+## Executando localmente
 
 ```bash
-cp .env.example .env   # set GROQ_API_KEY
-docker compose up --build
+cp .env.example .env   # configure as chaves de API (DEEPSEEK_API_KEY, GROQ_API_KEY)
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn backend.main:app --host 0.0.0.0 --port 8702
 ```
 
-The API serves the frontend directly at `http://localhost:8702`.
+A API serve o frontend diretamente em `http://localhost:8702`.
 
-## Testing
+## Testes
 
 ```bash
 cd backend && pip install -r ../requirements.txt
@@ -137,5 +181,5 @@ pip install pytest
 cd .. && python3 -m pytest tests/ -q
 ```
 
-All monitoring, chat, and API logic is tested with injected fakes for HTTP calls, the
-database, and the clock — no live services required to run the suite.
+Toda a lógica de monitoramento, chat e API é testada com injeção de dependências
+para chamadas HTTP, banco de dados e relógio — sem necessidade de serviços externos.

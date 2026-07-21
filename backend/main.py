@@ -3,15 +3,22 @@
 import json
 import os
 import sqlite3
+import sys
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
+# Ensure backend/ is importable
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import agent as agent_mod
 import cache_db
+import export_utils
 import periods as periods_mod
 import trend as trend_mod
 
@@ -285,6 +292,43 @@ def post_chat(req: ChatRequest):
     try:
         reply, chart, table, usage = agent_mod.chat_reply(conn, req.message, req.history)
         return {"reply": reply, "chart": chart, "table": table, "usage": usage}
+    finally:
+        conn.close()
+
+
+class ExportRequest(BaseModel):
+    messages: list = []
+    site_id: Optional[str] = None
+
+
+@app.post("/api/export/html")
+def export_html(req: ExportRequest):
+    """Generate a standalone HTML report from chat messages."""
+    conn = _get_conn()
+    try:
+        html = export_utils.generate_html_report(conn, req.messages, req.site_id)
+        return StreamingResponse(
+            iter([html]),
+            media_type="text/html",
+            headers={"Content-Disposition": "attachment; filename=relatorio-kpis.html"},
+        )
+    finally:
+        conn.close()
+
+
+@app.post("/api/export/ppt")
+def export_ppt(req: ExportRequest):
+    """Generate a PowerPoint presentation from chat messages."""
+    conn = _get_conn()
+    try:
+        ppt_bytes = export_utils.generate_ppt(conn, req.messages, req.site_id)
+        return StreamingResponse(
+            ppt_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            headers={"Content-Disposition": "attachment; filename=relatorio-kpis.pptx"},
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
 
