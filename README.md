@@ -139,7 +139,3 @@ cd .. && python3 -m pytest tests/ -q
 
 All monitoring, chat, and API logic is tested with injected fakes for HTTP calls, the
 database, and the clock — no live services required to run the suite.
-
-## License
-
-MIT — see [LICENSE](LICENSE).

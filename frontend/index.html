@@ -31,7 +31,10 @@
 <div id="stale-banner" class="hidden bg-yellow-200 text-yellow-900 text-sm p-2 rounded mb-3" data-i18n="stale_banner"></div>
 
 <div class="flex items-center justify-between mb-2">
-  <h1 class="text-xl font-bold" data-i18n="title">Main KPIs Dashboard</h1>
+  <div class="flex items-center gap-3">
+    <a href="https://alancosta.dev/#projetos" class="text-sm text-blue-600 hover:underline" data-i18n="back_link">&larr; Voltar</a>
+    <h1 class="text-xl font-bold" data-i18n="title">Main KPIs Dashboard</h1>
+  </div>
   <div class="flex gap-2">
     <button id="lang-pt" title="Portugues"><img src="https://flagcdn.com/24x18/br.png" width="24" height="18" class="rounded-sm" alt="BR"></button>
     <button id="lang-es" title="Espanol"><img src="https://flagcdn.com/24x18/es.png" width="24" height="18" class="rounded-sm" alt="ES"></button>
@@ -84,7 +87,7 @@
 </div>
 
 <div class="overflow-x-auto pb-2">
-  <div id="panels" class="grid grid-cols-6 gap-2 items-start"></div>
+  <div id="panels" class="grid grid-cols-6 gap-1 items-start"></div>
 </div>
 
 <div id="expand-modal" class="hidden fixed inset-0 modal-overlay flex items-center justify-center z-40">
@@ -164,6 +167,7 @@ const I18N = {
     agents_dashboard: "Dashboard", agents_chat: "Chat", agents_chat_accuracy: "Precisao do Chat",
     agents_supervisor: "Supervisor", agents_modal_status: "Status atual:",
     agents_log_title: "Historico de hoje", agents_log_empty: "Nenhuma rodada ainda hoje.",
+    back_link: "← Voltar",
   },
   es: {
     title: "Main KPIs Dashboard", filter_kpi: "NOMBRE KPI", filter_periodicidade: "PERIODICIDAD",
@@ -177,6 +181,7 @@ const I18N = {
     agents_dashboard: "Dashboard", agents_chat: "Chat", agents_chat_accuracy: "Precision del Chat",
     agents_supervisor: "Supervisor", agents_modal_status: "Estado actual:",
     agents_log_title: "Historial de hoy", agents_log_empty: "Ninguna corrida hoy todavia.",
+    back_link: "← Volver",
   },
 };
 
@@ -253,7 +258,7 @@ function populateNumPeriodosOptions(periodicidade) {
 async function populateAnoOptions(periodicidade) {
   const sel = document.getElementById("f-ano");
   const prev = sel.value;
-  const resp = await fetch("/api/kpis/anos?periodicidade=" + periodicidade);
+  const resp = await fetch("api/kpis/anos?periodicidade=" + periodicidade);
   const body = resp.status === 200 ? await resp.json() : { anos: [] };
   sel.innerHTML = `<option value="">--</option>` + body.anos.map(a => `<option value="${a}">${a}</option>`).join("");
   sel.value = body.anos.map(String).includes(prev) ? prev : "";
@@ -289,7 +294,7 @@ async function loadPanels() {
   if (f.site_id) params.set("site_id", f.site_id);
   params.set("num_periodos", f.num_periodos);
 
-  const resp = await fetch("/api/kpis?" + params.toString());
+  const resp = await fetch("api/kpis?" + params.toString());
   const banner = document.getElementById("stale-banner");
   if (resp.status !== 200) {
     banner.classList.remove("hidden");
@@ -347,22 +352,22 @@ function renderPanel(panel, periodicidade, kpiName, numPeriodos) {
 
 function renderTable(panel) {
   let rowsHtml = panel.rows.map(row => {
-    const periodCells = row.periods.map(p => `<td class="px-1 py-0.5 text-right">${fmtValor(p.valor, row.kpi_name)}</td>`).join("");
+    const periodCells = row.periods.map(p => `<td class="px-0.5 py-0.5 text-right">${fmtValor(p.valor, row.kpi_name)}</td>`).join("");
     return `<tr>
-      <td class="px-1 py-0.5 font-mono">${row.kpi_name}</td>
+      <td class="px-0.5 py-0.5">${row.kpi_name}</td>
       ${periodCells}
-      <td class="px-1 py-0.5 whitespace-nowrap">${fmtDelta(row.delta_recente.valor, row.kpi_name)}</td>
-      <td class="px-1 py-0.5 whitespace-nowrap">${fmtDelta(row.yoy, row.kpi_name)}</td>
+      <td class="px-0.5 py-0.5 whitespace-nowrap">${fmtDelta(row.delta_recente.valor, row.kpi_name)}</td>
+      <td class="px-0.5 py-0.5 whitespace-nowrap">${fmtDelta(row.yoy, row.kpi_name)}</td>
     </tr>`;
   }).join("");
-  const periodHeaders = (panel.rows[0]?.periods || []).map(p => `<th class="px-1 py-0.5 whitespace-nowrap">${p.label}</th>`).join("");
+  const periodHeaders = (panel.rows[0]?.periods || []).map(p => `<th class="px-0.5 py-0.5 whitespace-nowrap">${p.label}</th>`).join("");
   const deltaLabel = panel.rows[0]?.delta_recente?.label || "";
-  return `<table class="kpi-table text-xs w-full">
+  return `<table class="kpi-table text-[10px] w-full">
     <thead><tr class="text-left text-gray-500 text-[9px] leading-tight">
-      <th class="px-1 py-0.5 whitespace-nowrap" data-i18n="filter_kpi">KPI NAME</th>
+      <th class="px-0.5 py-0.5 whitespace-nowrap" data-i18n="filter_kpi">KPI NAME</th>
       ${periodHeaders}
-      <th class="px-1 py-0.5 whitespace-nowrap">${deltaLabel}</th>
-      <th class="px-1 py-0.5 whitespace-nowrap">YoY</th>
+      <th class="px-0.5 py-0.5 whitespace-nowrap">${deltaLabel}</th>
+      <th class="px-0.5 py-0.5 whitespace-nowrap">YoY</th>
     </tr></thead>
     <tbody>${rowsHtml}</tbody>
   </table>`;
@@ -381,7 +386,7 @@ let chart = null;
 async function openChartModal(kpiName, siteId, periodicidade, numPeriodos) {
   const params = new URLSearchParams({ kpi_name: kpiName, site_id: siteId, periodicidade });
   if (numPeriodos) params.set("num_periodos", numPeriodos);
-  const resp = await fetch(`/api/kpis/series?${params.toString()}`);
+  const resp = await fetch(`api/kpis/series?${params.toString()}`);
   if (resp.status !== 200) return;
   const body = await resp.json();
 
@@ -413,7 +418,7 @@ document.getElementById("chart-close").addEventListener("click", () => {
 async function openChartModalMulti(kpiName, periodicidade, numPeriodos) {
   const params = new URLSearchParams({ kpi_name: kpiName, periodicidade });
   if (numPeriodos) params.set("num_periodos", numPeriodos);
-  const resp = await fetch(`/api/kpis/series-multi?${params.toString()}`);
+  const resp = await fetch(`api/kpis/series-multi?${params.toString()}`);
   if (resp.status !== 200) return;
   const body = await resp.json();
 
@@ -674,7 +679,7 @@ document.getElementById("agent-modal-close").addEventListener("click", () => {
 });
 
 async function loadAgentsStatus() {
-  const resp = await fetch("/api/agents/status");
+  const resp = await fetch("api/agents/status");
   const doc = resp.status === 200
     ? await resp.json()
     : { checked_at: null, overall_status: "unknown", agents: [] };
@@ -708,7 +713,7 @@ function renderAgentsLog(logDoc) {
 }
 
 async function loadAgentsLog() {
-  const resp = await fetch("/api/agents/log");
+  const resp = await fetch("api/agents/log");
   const doc = resp.status === 200 ? await resp.json() : { date: null, runs: [] };
   renderAgentsLog(doc);
 }
@@ -827,7 +832,7 @@ async function sendChatMessage() {
 
   let resp;
   try {
-    resp = await fetch("/api/chat", {
+    resp = await fetch("api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: text, history: historyBeforeThisTurn }),
