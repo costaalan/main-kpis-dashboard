@@ -274,7 +274,7 @@ function fmtDelta(v, kpiName) {
   // Fixed-width arrow column (grid-cols) so arrows line up vertically across rows
   // regardless of how many digits the number next to them has.
   const wrap = (arrow, text, colorClass) =>
-    `<span class="grid grid-cols-[14px_1fr] gap-1 items-center w-full">` +
+    `<span class="grid grid-cols-[9px_1fr] gap-0.5 items-center w-full">` +
     `<span class="text-center ${colorClass}">${arrow}</span><span class="text-right">${text}</span></span>`;
   if (v === null || v === undefined) return wrap("", "-", "");
   const unit = PERCENT_KPIS.has(kpiName) ? "pp" : "%";
@@ -362,8 +362,8 @@ function renderTable(panel) {
   }).join("");
   const periodHeaders = (panel.rows[0]?.periods || []).map(p => `<th class="px-0.5 py-0.5 whitespace-nowrap">${p.label}</th>`).join("");
   const deltaLabel = panel.rows[0]?.delta_recente?.label || "";
-  return `<table class="kpi-table text-[10px] w-full">
-    <thead><tr class="text-left text-gray-500 text-[9px] leading-tight">
+  return `<table class="kpi-table text-[9px] w-full">
+    <thead><tr class="text-left text-gray-500 text-[8px] leading-tight">
       <th class="px-0.5 py-0.5 whitespace-nowrap" data-i18n="filter_kpi">KPI NAME</th>
       ${periodHeaders}
       <th class="px-0.5 py-0.5 whitespace-nowrap">${deltaLabel}</th>
