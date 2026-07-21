@@ -33,33 +33,69 @@ def _default_read_json(path):
         return json.load(f)
 
 
-def check_databricks(status_path, read_json=_default_read_json, now=None):
-    """Reads databricks_status.json (written by the n8n Databricks workflow)."""
+def check_databricks(status_path, read_json=_default_read_json, now=None, retry_count=3):
+    """Reads databricks_status.json. If stale, auto-retries the generator up to
+    retry_count times before marking FAIL — no human intervention needed."""
+    import subprocess, time
+
     now = now or datetime.now(timezone.utc)
+    gerador_script = os.path.join(HERMES_HOME, "scripts", "gerador_main_kpis.py")
+    cache_script = os.path.join(HERMES_HOME, "scripts", "main-kpis-dashboard", "backend", "kpi_cache.py")
 
-    try:
-        data = read_json(status_path)
-    except (FileNotFoundError, OSError):
-        return {"status": "fail", "message": f"databricks_status.json ausente em {status_path}"}
-    except json.JSONDecodeError as e:
-        return {"status": "fail", "message": f"databricks_status.json invalido: {e}"}
+    def _read_and_check():
+        try:
+            data = read_json(status_path)
+        except (FileNotFoundError, OSError):
+            return None, f"databricks_status.json ausente em {status_path}"
+        except json.JSONDecodeError as e:
+            return None, f"databricks_status.json invalido: {e}"
 
-    checked_at_raw = data.get("checked_at")
-    if not checked_at_raw:
-        return {"status": "fail", "message": "databricks_status.json sem campo checked_at"}
+        checked_at_raw = data.get("checked_at")
+        if not checked_at_raw:
+            return None, "databricks_status.json sem campo checked_at"
 
-    checked_at = datetime.fromisoformat(checked_at_raw.replace("Z", "+00:00"))
-    age_seconds = (now - checked_at).total_seconds()
-    if age_seconds > DATABRICKS_STATUS_STALE_AFTER_SECONDS:
-        return {
-            "status": "fail",
-            "message": f"databricks_status.json desatualizado, ultimo check ha {int(age_seconds)}s",
-        }
+        checked_at = datetime.fromisoformat(checked_at_raw.replace("Z", "+00:00"))
+        age_seconds = (now - checked_at).total_seconds()
+        if age_seconds > DATABRICKS_STATUS_STALE_AFTER_SECONDS:
+            return None, f"databricks_status.json desatualizado, ultimo check ha {int(age_seconds)}s"
 
-    if data.get("status") != "ok":
-        return {"status": "fail", "message": data.get("message") or "Databricks check reportou falha"}
+        if data.get("status") != "ok":
+            return None, data.get("message") or "Databricks check reportou falha"
 
-    return {"status": "ok", "message": data.get("message") or "tabelas Databricks populadas"}
+        return data, data.get("message") or "tabelas Databricks populadas"
+
+    # First check
+    data, msg = _read_and_check()
+    if data:
+        return {"status": "ok", "message": msg}
+
+    # If stale, try to refresh automatically
+    for attempt in range(1, retry_count + 1):
+        print(f"[SUPERVISOR] Databricks stale, tentando refresh ({attempt}/{retry_count})...")
+        try:
+            # Run the data generator
+            if os.path.isfile(gerador_script):
+                subprocess.run(
+                    ["python3", gerador_script],
+                    capture_output=True, timeout=120, cwd=os.path.dirname(gerador_script)
+                )
+            # Refresh cache
+            if os.path.isfile(cache_script):
+                subprocess.run(
+                    ["python3", cache_script],
+                    capture_output=True, timeout=60, cwd=os.path.dirname(cache_script)
+                )
+            # Wait for file to update
+            time.sleep(3)
+            # Re-read now with updated timestamp
+            now = datetime.now(timezone.utc)
+            data, msg = _read_and_check()
+            if data:
+                return {"status": "ok", "message": f"Recuperado apos {attempt} tentativa(s): {msg}"}
+        except Exception as e:
+            print(f"[SUPERVISOR] Tentativa {attempt} falhou: {e}")
+
+    return {"status": "fail", "message": f"Falha apos {retry_count} tentativas: {msg}"}
 
 
 def aggregate(databricks_result, dashboard_result, chat_result, chat_accuracy_result):
