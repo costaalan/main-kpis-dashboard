@@ -25,7 +25,7 @@ DEFAULT_DB_PATH = os.path.join(HERMES_HOME, "main-kpis-dashboard", "data", "kpi_
 DEFAULT_DATABRICKS_STATUS_PATH = os.path.join(HERMES_HOME, "main-kpis-monitor", "databricks_status.json")
 DEFAULT_MONITOR_STATUS_PATH = os.path.join(HERMES_HOME, "main-kpis-dashboard", "data", "monitor_status.json")
 DEFAULT_AGENT_LOG_PATH = os.path.join(HERMES_HOME, "main-kpis-dashboard", "data", "agent_log.json")
-DEFAULT_DASHBOARD_BASE_URL = os.environ.get("MAIN_KPIS_BASE_URL", "http://localhost:8702")
+DEFAULT_DASHBOARD_BASE_URL = os.environ.get("MAIN_KPIS_BASE_URL", "http://localhost:8708")
 
 
 def _default_read_json(path):
