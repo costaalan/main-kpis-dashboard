@@ -47,18 +47,21 @@ flowchart TB
     subgraph api["Backend FastAPI"]
         MAIN[main.py<br/>API REST + Export]
         AGENT[agent.py<br/>Assistente + Guardrails]
-        RAG[kpi_rag.py<br/>RAG de KPIs<br/>sinônimos + regras]
         EXPORT[export_utils.py<br/>PPT / HTML]
         MAIN --> AGENT
         MAIN --> EXPORT
-        AGENT --> RAG
+    end
+
+    subgraph rag["RAG de KPIs"]
+        KR[kpi_rag.py<br/>sinônimos + regras<br/>fuzzy matching]
     end
 
     SQLITE --> MAIN
     AGENT -->|ferramenta get_kpi_data<br/>somente leitura| SQLITE
+
     USER_MSG((mensagem do<br/>usuário))
-    USER_MSG -->|"churn", "tx reclamação"...| RAG
-    RAG -->|resolve KPI<br/>+ hint| AGENT
+    USER_MSG -->|"churn", "tx reclamação"...| KR
+    KR -->|resolve KPI + hint| AGENT
 
     subgraph llm["Provedores LLM (fallback automático)"]
         DS[DeepSeek<br/>primário]
