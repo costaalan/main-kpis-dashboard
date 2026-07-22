@@ -160,6 +160,22 @@ ficam registrados na página sem alertar ninguém.
 
 Nenhum componente desta camada escreve dados de produção — apenas observa e reporta.
 
+### 5. Níveis de Autonomia dos Agentes
+
+| Agente | Tipo | Autonomia | Comportamento |
+|--------|------|-----------|---------------|
+| **Data Generator** | Cron (`gerador_main_kpis.py`) | 🟢 N1 | Gera dados sintéticos no Databricks automaticamente às 07h BRT |
+| **Cache Refresh** | Cron (`kpi_cache.py`) | 🟢 N1 | Atualiza cache SQLite do Databricks automaticamente às 07:15 BRT |
+| **Supervisor** | Cron (`supervisor.py`) | 🟢 N2 | Detecta Databricks stale → tenta reexecutar gerador + cache **3x** antes de marcar FAIL. Monitora chat, dashboard e precisão |
+| **Chat Assistant** | Sob demanda (`agent.py`) | 🟡 N3 | Reativo — só age quando o usuário pergunta. Responde com RAG + LLM + tool calling |
+| **Monitor Checks** | Interno (`monitor_checks.py`) | ⚪ N4 | Observa e reporta — testa chat com mensagens sintéticas, verifica precisão, sem ações automáticas |
+
+**Matriz de autonomia:**
+- **N1**: Executa sozinho, reporta depois
+- **N2**: Executa, verifica, escala se falhar (até 3 tentativas)
+- **N3**: Reativo — precisa de input externo
+- **N4**: Observa e documenta — nunca age
+
 ## Stack
 
 - **Backend:** FastAPI, Pydantic, SQLite
