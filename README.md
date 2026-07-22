@@ -59,8 +59,8 @@ flowchart TB
     SQLITE --> MAIN
     AGENT -->|ferramenta get_kpi_data<br/>somente leitura| SQLITE
 
-    USER_MSG((mensagem do<br/>usuário))
-    USER_MSG -->|"churn", "tx reclamação"...| KR
+    USER_MSG((mensagem do<br/>usuario))
+    USER_MSG -->|churn, tx reclamacao...| KR
     KR -->|resolve KPI + hint| AGENT
 
     subgraph llm["Provedores LLM (fallback automático)"]
