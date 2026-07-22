@@ -112,7 +112,9 @@ def build_system_prompt(today=None):
         "REGRA: Responda APENAS o que foi perguntado. NAO faça perguntas no final.\n"
         "NAO ofereça gráficos, NAO sugira próximos passos. Seja direto e conciso.\n"
         "PROIBIDO gerar codigo HTML, JavaScript, Python ou qualquer codigo-fonte.\n"
-        "PROIBIDO escrever '<!DOCTYPE', '<html>', '<script>' ou '<style>'.\n\n"
+        "PROIBIDO escrever '<!DOCTYPE', '<html>', '<script>' ou '<style>'.\n"
+        "PROIBIDO escrever tags XML como '<function_calls>', '<invoke>', '<parameter>'.\n"
+        "Use APENAS a ferramenta get_kpi_data. Nunca simule chamadas de ferramenta no texto.\n\n"
         f"Hoje: {today.isoformat()} (W{iso_week:02d}). periodo_key: dia=AAAA-MM-DD, semana=AAAA-Wss, mes=AAAA-MM.\n\n"
         "SAUDACOES (\"ola\", \"bom dia\", \"ei\"): max 1 frase curta. NAO chame ferramenta. NAO descreva data nem KPIs.\n"
         "PERGUNTAS 'O QUE E': se o usuario perguntar 'o que e X' ou 'explique X', responda com a definicao do KPI.\n"
@@ -427,5 +429,8 @@ def chat_reply(conn, message, history, client=None):
         best = max(chart_candidates, key=lambda x: len(x[1]))
         args, rows = best
         table = _build_table(args["site_id"], args["kpi_name"], args["periodicidade"], rows)
+
+    # Remove XML tags that DeepSeek sometimes hallucinates in text replies
+    reply_text = re.sub(r'<\s*/?\s*(function_calls|invoke|parameter|xml)[^>]*>', '', reply_text, flags=re.IGNORECASE)
 
     return reply_text, chart, table, _usage_dict(response, final)
