@@ -30,8 +30,8 @@ SITE_LABELS = {
 # legitimate data answer, only in a verbatim prompt leak. Kept in sync by
 # test_check_chat_leak_phrases_match_system_prompt.
 SYSTEM_PROMPT_LEAK_PHRASES = [
-    "assistente de KPIs do Main KPIs Dashboard",
-    "periodo_inicio/periodo_fim devem seguir o mesmo formato de periodo_key",
+    "Especialista em Analytics de E-commerce — Main KPIs Dashboard",
+    "PROIBIDO escrever tags XML como",
 ]
 
 CHAT_TEST_MESSAGES = [

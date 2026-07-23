@@ -138,6 +138,29 @@ def test_chat_reply_direct_answer_no_tool_call():
     assert len(client.calls) == 1
 
 
+def test_chat_reply_strips_leaked_dsml_tool_call_markup_from_final_reply():
+    """Some providers hallucinate tool-call syntax as plain text (e.g. DeepSeek's
+    <｜｜DSML｜｜...｜> pseudo-tags) instead of using the structured protocol. If that
+    garbage ends up in the *final* narrative reply (after tools already executed),
+    it must be stripped before reaching the user."""
+    conn = _conn()
+    cache_db.write_kpi_rows(conn, [_row(periodo_key="2026-07-16", periodo_label="16-07", valor=1000.0)])
+    tool_call = FakeToolCall("call_1", "get_kpi_data",
+                              json.dumps({"site_id": "MLB", "kpi_name": "GMV", "periodicidade": "dia"}))
+    leaked_final = (
+        'O GMV do Brasil foi 1000. <｜｜DSML｜｜tool_calls> '
+        '<｜｜DSML｜｜invoke name="get_kpi_data"></｜｜DSML｜｜invoke>'
+    )
+    client = FakeClient([
+        FakeResponse(FakeMessage(content=None, tool_calls=[tool_call])),
+        FakeResponse(FakeMessage(content=leaked_final, tool_calls=None)),
+    ])
+    reply, chart, table, usage = agent.chat_reply(conn, "qual o gmv do brasil?", [], client=client)
+    assert "DSML" not in reply
+    assert "｜" not in reply
+    assert reply.strip().startswith("O GMV do Brasil foi 1000.")
+
+
 def test_chat_reply_tool_call_round_trip():
     conn = _conn()
     cache_db.write_kpi_rows(conn, [_row(periodo_key="2026-07-16", periodo_label="16-07", valor=1000.0)])

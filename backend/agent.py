@@ -159,8 +159,36 @@ TOOL_SCHEMA = [{
 }]
 
 
-def _call_llm(messages, tools=None):
-    """Call DeepSeek primary, Ollama/Groq fallback. Returns parsed JSON."""
+def _call_llm(messages, tools=None, client=None):
+    """Call DeepSeek primary, Ollama/Groq fallback. Returns parsed JSON (dict-shaped).
+
+    `client` is a test-only injection point: an object exposing the OpenAI/Groq-SDK
+    style `.chat.completions.create(...)` interface. When given, it replaces the real
+    HTTP fallback chain entirely so tests never hit the network; production leaves it
+    None and always goes through the real DeepSeek/Groq/Ollama cascade below."""
+    if client is not None:
+        kwargs = {"model": MODEL, "messages": messages}
+        if tools:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
+        response = client.chat.completions.create(**kwargs)
+        choice = response.choices[0].message
+        tool_calls = [
+            {"id": tc.id, "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+            for tc in (choice.tool_calls or [])
+        ]
+        usage_obj = getattr(response, "usage", None)
+        usage = None
+        if usage_obj is not None:
+            usage = {
+                "prompt_tokens": getattr(usage_obj, "prompt_tokens", 0) or 0,
+                "completion_tokens": getattr(usage_obj, "completion_tokens", 0) or 0,
+            }
+        return {
+            "choices": [{"message": {"content": choice.content, "tool_calls": tool_calls or None}}],
+            "usage": usage,
+        }
+
     import urllib.request, urllib.error
 
     body = {"model": "deepseek-chat", "messages": messages}
@@ -361,12 +389,12 @@ def chat_reply(conn, message, history, client=None):
         [{"role": "user", "content": message_with_rag}]
 
     try:
-        response = _call_llm(messages, tools=TOOL_SCHEMA)
+        response = _call_llm(messages, tools=TOOL_SCHEMA, client=client)
     except Exception:
         import time
         try:
             time.sleep(2)
-            response = _call_llm(messages, tools=TOOL_SCHEMA)
+            response = _call_llm(messages, tools=TOOL_SCHEMA, client=client)
         except Exception as e:
             import traceback, sys
             print(f"[AGENT ERROR] {type(e).__name__}: {e}", file=sys.stderr)
@@ -408,7 +436,7 @@ def chat_reply(conn, message, history, client=None):
         messages.append({"role": "tool", "tool_call_id": tc["id"], "content": content})
 
     try:
-        final = _call_llm(messages)
+        final = _call_llm(messages, client=client)
     except Exception:
         return ("Desculpe, nao consegui gerar uma resposta agora. Tente novamente.",
                 None, None, _usage_dict(response))
@@ -430,7 +458,13 @@ def chat_reply(conn, message, history, client=None):
         args, rows = best
         table = _build_table(args["site_id"], args["kpi_name"], args["periodicidade"], rows)
 
-    # Remove XML tags that DeepSeek sometimes hallucinates in text replies
-    reply_text = re.sub(r'<\s*/?\s*(function_calls|invoke|parameter|xml)[^>]*>', '', reply_text, flags=re.IGNORECASE)
+    # Remove tool-call markup that some providers hallucinate in text replies instead
+    # of using the structured tool-call protocol — both plain XML-ish tags
+    # (<function_calls>, <invoke>, <parameter>) and the fullwidth-pipe pseudo-tokens
+    # some models emit (e.g. <｜｜DSML｜｜tool_calls>, <｜｜DSML｜｜invoke ...>).
+    reply_text = re.sub(
+        r'<[^>]{0,200}?(function_calls|invoke|parameter|xml|tool_call|dsml|｜)[^>]{0,200}?>',
+        '', reply_text, flags=re.IGNORECASE,
+    )
 
     return reply_text, chart, table, _usage_dict(response, final)

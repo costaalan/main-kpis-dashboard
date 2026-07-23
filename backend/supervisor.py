@@ -68,6 +68,7 @@ def check_databricks(status_path, read_json=_default_read_json, now=None, retry_
     data, msg = _read_and_check()
     if data:
         return {"status": "ok", "message": msg}
+    original_msg = msg
 
     # If stale, try to refresh automatically
     for attempt in range(1, retry_count + 1):
@@ -95,7 +96,7 @@ def check_databricks(status_path, read_json=_default_read_json, now=None, retry_
         except Exception as e:
             print(f"[SUPERVISOR] Tentativa {attempt} falhou: {e}")
 
-    return {"status": "fail", "message": f"Falha apos {retry_count} tentativas: {msg}"}
+    return {"status": "fail", "message": f"Falha apos {retry_count} tentativas: {original_msg}"}
 
 
 def aggregate(databricks_result, dashboard_result, chat_result, chat_accuracy_result):
